@@ -22,11 +22,11 @@ This workflow automatically validates that pull request titles follow the conven
 
 ### Automatic Version Bump Workflow
 
-This workflow automatically creates version tags based on conventional commits when merging into the `master` branch.
+This workflow automatically creates version tags based on conventional commit format in PR titles when merging into the `master` branch.
 
 ### How it works
 
-The workflow analyzes commits since the last tag and determines the appropriate version bump:
+The workflow analyzes the PR title (merge commit message) and determines the appropriate version bump:
 
 - **Major version bump** (`v1.0.0` → `v2.0.0`): Breaking changes
   - Commits with `!` after the type: `feat!:`, `fix!:`, etc.
@@ -68,20 +68,24 @@ Use the following format for your commit messages:
 
 ### Examples
 
+**PR Titles (what gets analyzed for version bumping):**
+
 ```bash
 # Patch version bump
-git commit -m "fix: resolve memory leak in data processing"
+fix: resolve memory leak in data processing
 
 # Minor version bump  
-git commit -m "feat: add user authentication system"
+feat: add user authentication system
 
 # Major version bump
-git commit -m "feat!: redesign API with new response format"
+feat!: redesign API with new response format
 # or
-git commit -m "feat: add new API endpoint
+feat: add new API endpoint
 
-BREAKING CHANGE: The old API endpoint has been removed"
+BREAKING CHANGE: The old API endpoint has been removed
 ```
+
+**Note**: The workflow analyzes the PR title, not individual commit messages. Make sure your PR titles follow conventional commit format.
 
 ### Workflow Features
 

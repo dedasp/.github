@@ -11,7 +11,7 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
+  pull-requests: read
 
 jobs:
   version-bump:
@@ -45,52 +45,108 @@ jobs:
           fi
           echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
 
-      - name: Analyze commits since last tag
+      - name: Get PR information
+        id: get_pr_info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Get the latest commit
+            const { data: commits } = await github.rest.repos.listCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 1
+            });
+            
+            const latestCommit = commits[0];
+            console.log('Latest commit:', latestCommit.commit.message);
+            
+            // Try to find associated PR
+            let prTitle = null;
+            let prNumber = null;
+            
+            // Check if this is a merge commit
+            if (latestCommit.commit.message.includes('Merge pull request')) {
+              const prMatch = latestCommit.commit.message.match(/Merge pull request #(\d+)/);
+              if (prMatch) {
+                prNumber = prMatch[1];
+                try {
+                  const { data: pr } = await github.rest.pulls.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: prNumber
+                  });
+                  prTitle = pr.title;
+                  console.log(`Found PR #${prNumber}: ${prTitle}`);
+                } catch (error) {
+                  console.log('Could not fetch PR details:', error.message);
+                }
+              }
+            }
+            
+            // If no PR found, use commit message
+            if (!prTitle) {
+              prTitle = latestCommit.commit.message.split('\n')[0]; // First line only
+              console.log('Using commit message as title:', prTitle);
+            }
+            
+            core.setOutput('prTitle', prTitle);
+            core.setOutput('prNumber', prNumber);
+
+      - name: Analyze PR title
         id: analyze_commits
         run: |
           LATEST_TAG="${{ steps.get_tag.outputs.latest_tag }}"
           HAS_TAGS="${{ steps.get_tag.outputs.has_tags }}"
           
-          # Get commits since the last tag (or all commits if no tags exist)
-          if [ "$HAS_TAGS" = "true" ]; then
-            COMMITS=$(git log ${LATEST_TAG}..HEAD --oneline --pretty=format:"%s")
-          else
-            COMMITS=$(git log --oneline --pretty=format:"%s")
-          fi
+          # Get the PR title from the previous step
+          PR_TITLE="${{ steps.get_pr_info.outputs.prTitle }}"
           
-          if [ "$HAS_TAGS" = "true" ]; then
-            echo "Commits since $LATEST_TAG:"
-          else
-            echo "All commits (no previous tags):"
-          fi
-          echo "$COMMITS"
+          echo "PR title analyzed: $PR_TITLE"
           
-          # Determine version bump type based on conventional commits
+          # Determine version bump type based on conventional commit format in PR title
           MAJOR_BUMP=false
           MINOR_BUMP=false
           PATCH_BUMP=false
           
           # Check for breaking changes (major version bump)
-          if echo "$COMMITS" | grep -qE "^(feat|fix|perf|refactor)(\(.+\))?!:|BREAKING CHANGE:"; then
+          if echo "$PR_TITLE" | grep -qE "^(feat|fix|perf|refactor)(\(.+\))?!:|BREAKING CHANGE:"; then
             MAJOR_BUMP=true
             echo "Breaking change detected - major version bump"
           # Check for new features (minor version bump)
-          elif echo "$COMMITS" | grep -qE "^feat(\(.+\))?:"; then
+          elif echo "$PR_TITLE" | grep -qE "^feat(\(.+\))?:"; then
             MINOR_BUMP=true
             echo "New feature detected - minor version bump"
           # Check for bug fixes, patches, or other changes (patch version bump)
-          elif echo "$COMMITS" | grep -qE "^(fix|perf|refactor|docs|style|test|chore|ci|build)(\(.+\))?:"; then
+          elif echo "$PR_TITLE" | grep -qE "^(fix|perf|refactor|docs|style|test|chore|ci|build)(\(.+\))?:"; then
             PATCH_BUMP=true
             echo "Bug fix or patch detected - patch version bump"
           else
-            echo "No conventional commits found - skipping version bump"
-            echo "skip_bump=true" >> $GITHUB_OUTPUT
-            exit 0
+            echo "No conventional commit format found in PR title"
+            echo ""
+            echo "PR title analyzed: $PR_TITLE"
+            echo ""
+            echo "To create a version tag, use conventional commit format in PR title:"
+            echo "  feat: add new feature"
+            echo "  fix: resolve bug"
+            echo "  docs: update documentation"
+            echo ""
+            
+            # Check if this is a repository with no tags (first version)
+            if [ "${{ steps.get_tag.outputs.has_tags }}" = "false" ]; then
+              echo "No existing tags found - creating initial version v0.1.0"
+              MINOR_BUMP=true
+              echo "minor_bump=true" >> $GITHUB_OUTPUT
+            else
+              echo "Skipping version bump - use conventional commit format in PR title"
+              echo "skip_bump=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
           fi
           
           echo "major_bump=$MAJOR_BUMP" >> $GITHUB_OUTPUT
           echo "minor_bump=$MINOR_BUMP" >> $GITHUB_OUTPUT
           echo "patch_bump=$PATCH_BUMP" >> $GITHUB_OUTPUT
+          echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
 
       - name: Calculate new version
         id: calculate_version
@@ -142,10 +198,8 @@ jobs:
           body: |
             ## Changes in this release
             
-            ### Commits since ${{ steps.get_tag.outputs.latest_tag }}:
-            ```bash
-            ${{ steps.analyze_commits.outputs.commits }}
-            ```
+            ### PR Title Analyzed:
+            ${{ steps.analyze_commits.outputs.pr_title }}
             
             ### Version Bump Type
             ${{ steps.analyze_commits.outputs.major_bump == 'true' && 'Major (breaking changes)' || steps.analyze_commits.outputs.minor_bump == 'true' && 'Minor (new features)' || 'Patch (bug fixes and improvements)' }}
