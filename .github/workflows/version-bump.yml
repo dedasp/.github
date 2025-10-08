@@ -29,20 +29,36 @@ jobs:
       - name: Get latest tag
         id: get_tag
         run: |
-          # Get the latest tag, or use v0.0.0 if no tags exist
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          # Check if any tags exist
+          if git describe --tags --abbrev=0 >/dev/null 2>&1; then
+            LATEST_TAG=$(git describe --tags --abbrev=0)
+            echo "has_tags=true" >> $GITHUB_OUTPUT
+            echo "Latest tag: $LATEST_TAG"
+          else
+            LATEST_TAG="v0.0.0"
+            echo "has_tags=false" >> $GITHUB_OUTPUT
+            echo "No tags found, starting from v0.0.0"
+          fi
           echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
-          echo "Latest tag: $LATEST_TAG"
 
       - name: Analyze commits since last tag
         id: analyze_commits
         run: |
           LATEST_TAG="${{ steps.get_tag.outputs.latest_tag }}"
+          HAS_TAGS="${{ steps.get_tag.outputs.has_tags }}"
           
-          # Get commits since the last tag
-          COMMITS=$(git log ${LATEST_TAG}..HEAD --oneline --pretty=format:"%s")
+          # Get commits since the last tag (or all commits if no tags exist)
+          if [ "$HAS_TAGS" = "true" ]; then
+            COMMITS=$(git log ${LATEST_TAG}..HEAD --oneline --pretty=format:"%s")
+          else
+            COMMITS=$(git log --oneline --pretty=format:"%s")
+          fi
           
-          echo "Commits since $LATEST_TAG:"
+          if [ "$HAS_TAGS" = "true" ]; then
+            echo "Commits since $LATEST_TAG:"
+          else
+            echo "All commits (no previous tags):"
+          fi
           echo "$COMMITS"
           
           # Determine version bump type based on conventional commits
