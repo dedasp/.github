@@ -9,9 +9,13 @@ on:
       - '.gitignore'
       - 'LICENSE'
 
+permissions:
+  contents: write
+  pull-requests: read
+
 jobs:
   version-bump-check:
-    uses: dedasp/github-config/.github/workflows/version-bump.yml@main
+    uses: dedasp/github-config/.github/workflows/version-bump.yml@master
     with:
       commit-message: ${{ github.event.head_commit.message }}
       repository: ${{ github.repository }}
