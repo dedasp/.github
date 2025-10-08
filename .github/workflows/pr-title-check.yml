@@ -3,6 +3,18 @@ name: PR Title Convention Check
 on:
   pull_request:
     types: [opened, edited, synchronize]
+  workflow_call:
+    inputs:
+      pr-title:
+        required: true
+        type: string
+      pr-number:
+        required: true
+        type: string
+
+permissions:
+  pull-requests: read
+  contents: read
 
 jobs:
   pr-title-check:
@@ -12,7 +24,12 @@ jobs:
       - name: Check PR title format
         id: check_title
         run: |
-          PR_TITLE="${{ github.event.pull_request.title }}"
+          # Use input if called via workflow_call, otherwise use PR event
+          if [ "${{ github.event_name }}" = "workflow_call" ]; then
+            PR_TITLE="${{ inputs.pr-title }}"
+          else
+            PR_TITLE="${{ github.event.pull_request.title }}"
+          fi
           echo "PR Title: $PR_TITLE"
           
           # Check if title follows conventional commit format

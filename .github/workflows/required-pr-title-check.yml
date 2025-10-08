@@ -1,0 +1,13 @@
+name: Required PR Title Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  pr-title-check:
+    uses: dedasp/github-config/.github/workflows/pr-title-check.yml@main
+    with:
+      pr-title: ${{ github.event.pull_request.title }}
+      pr-number: ${{ github.event.pull_request.number }}
+    secrets: inherit
